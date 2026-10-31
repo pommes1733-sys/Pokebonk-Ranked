@@ -297,7 +297,7 @@ async function renderAdmin(){
 }
 async function adminAction(action){
  const status=$("adminMessage");if(status){status.className="muted small";status.textContent="Processing…";}
- try{await action();await refreshCloudEconomy();if(status){status.className="muted small ok";status.textContent="Action completed successfully.";}await renderAdmin();}
+ try{await action();await refreshCloudEconomy();if(cloudWeeklyRP!==null){const rankEl=$("playerRank"),rpEl=$("playerRP");if(rankEl)rankEl.textContent=rank(cloudWeeklyRP);if(rpEl)rpEl.textContent=cloudWeeklyRP.toLocaleString("en-US",{maximumFractionDigits:2})+" RP this week";}if(status){status.className="muted small ok";status.textContent="Action completed successfully.";}await renderAdmin();await refreshLeaderboard();}
  catch(e){if(status){status.className="muted small err";status.textContent=e.message||"Admin action failed.";}}
 }
 
