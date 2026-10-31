@@ -63,3 +63,24 @@ revoke all on function public.get_my_pokebonk_loadout() from public, anon;
 revoke all on function public.set_pokebonk_equipped(text,text) from public, anon;
 grant execute on function public.get_my_pokebonk_loadout() to authenticated;
 grant execute on function public.set_pokebonk_equipped(text,text) to authenticated;
+
+
+-- Public, read-only cosmetic display data for leaderboard nameplates/titles/badges.
+-- Only equipped cosmetic IDs and public usernames are exposed, never ownership history or account data.
+create or replace function public.get_public_pokebonk_loadouts()
+returns table(username text, category text, cosmetic_id text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.username, l.category, l.cosmetic_id
+  from public.player_cosmetic_loadout l
+  join public.player_profiles p on p.id = l.player_id
+  left join public.player_wallets w on w.user_id = l.player_id
+  where coalesce(w.is_banned, false) = false
+  order by p.username, l.category;
+$$;
+
+revoke all on function public.get_public_pokebonk_loadouts() from public;
+grant execute on function public.get_public_pokebonk_loadouts() to anon, authenticated;
