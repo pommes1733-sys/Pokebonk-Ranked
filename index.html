@@ -338,7 +338,7 @@ $("screenshot").addEventListener("change",async()=>{
  }catch(err){$("ocrStatus").textContent=err.message||"OCR failed. Try a clearer screenshot.";recognized=null}
 });
 $("runForm").addEventListener("submit",async e=>{
- e.preventDefault();const p=current();if(!p||!recognized||!selectedShot){msg("submitMessage","Upload a screenshot and wait for OCR recognition.");return}
+ e.preventDefault();const form=e.currentTarget;const p=current();if(!p||!recognized||!selectedShot){msg("submitMessage","Upload a screenshot and wait for OCR recognition.");return}
  const button=$("saveRunBtn");button.disabled=true;button.textContent="Saving to cloud…";
  try{
   const {data,error}=await supabase.rpc("submit_pokebonk_run",{p_points:recognized.points,p_kos:recognized.kos,p_damage:recognized.damage,p_seconds:recognized.seconds});
@@ -346,7 +346,7 @@ $("runForm").addEventListener("submit",async e=>{
   await refreshCloudRuns();
   const saved=Array.isArray(data)?data[0]:data;
   const earned=Number(saved?.rp_earned??0);
-  e.currentTarget.reset();recognized=null;selectedShot="";$("ocrPreview").classList.add("hidden");button.textContent="Recognize screenshot first";
+  form.reset();recognized=null;selectedShot="";$("ocrPreview").classList.add("hidden");button.textContent="Recognize screenshot first";
   $("ocrStatus").textContent="Run saved securely to your account.";msg("submitMessage","Cloud run saved. "+earned.toFixed(2)+" RP added.","ok");renderAll();
  }catch(err){
   console.error(err);button.disabled=false;button.textContent="Save recognized run →";msg("submitMessage","Cloud save failed: "+(err.message||"Please try again."),"err");
