@@ -44,8 +44,8 @@ let activeStorageKey=DBKEY;
 let db={profiles:[],runs:[],activeId:null,adminHash:null,weekSettled:null,legacyBalances:{},ownedCosmetics:{}};
 let registerMode=true, adminUnlocked=false;
 const $=id=>document.getElementById(id);
-const weekKey=(date=new Date())=>{const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const start=new Date(Date.UTC(d.getUTCFullYear(),0,1));const w=Math.ceil((((d-start)/86400000)+1)/7);return `${d.getUTCFullYear()}-W${String(w).padStart(2,"0")}`};
-const rp=(r)=>Math.round((r.points*.1+r.kos*2+r.damage/50+r.seconds*.1)*100)/100;
+const weekKey=(date=new Date())=>{const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const start=new Date(Date.UTC(d.getUTCFullYear(),0,1));const w=Math.ceil((((d-start)/86400000)+1)/7);return `${d.getUTCFullYear()}-W${String(w).padStart(2,"0")}`};
+const rp=(r)=>Number.isFinite(Number(r.serverRP))?Number(r.serverRP):Math.round((r.points*.1+r.kos*2+r.damage/50+r.seconds*.1)*100)/100;
 const rank=n=>n>=15000?"Grandmaster":n>=9000?"Master":n>=5500?"Diamond":n>=3000?"Platinum":n>=1500?"Gold":n>=500?"Silver":"Bronze";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function load(userId,profile,email){
@@ -72,13 +72,24 @@ function current(){return db.profiles.find(p=>p.id===db.activeId)}
 async function activateUser(user){
  const {data:profile,error}=await supabase.from("player_profiles").select("id,username").eq("id",user.id).maybeSingle();
  if(error||!profile){await supabase.auth.signOut();msg("authMessage","Your account exists, but its player profile could not be loaded. Please contact the project owner.");return;}
- load(user.id,profile,user.email);$("authPassword").value="";showApp();
+ load(user.id,profile,user.email);
+ try{await refreshCloudRuns();}catch(e){console.error("Cloud run loading failed",e);msg("submitMessage","Could not load cloud runs: "+(e.message||"Unknown error"),"err");}
+ $("authPassword").value="";showApp();
+}
+async function refreshCloudRuns(){
+ const p=current();if(!p)return;
+ const {data,error}=await supabase.from("player_runs").select("id,player_id,rp_earned,submitted_at,points,kos,damage,seconds,week_key").eq("player_id",p.id).order("submitted_at",{ascending:false});
+ if(error)throw error;
+ const backupKey=activeStorageKey+":pre-cloud-runs";
+ if(!localStorage.getItem(backupKey))localStorage.setItem(backupKey,JSON.stringify(db.runs||[]));
+ db.runs=(data||[]).map(r=>({id:r.id,userId:r.player_id,points:Number(r.points||0),kos:Number(r.kos||0),damage:Number(r.damage||0),seconds:Number(r.seconds||0),time:String(Math.floor(Number(r.seconds||0)/60))+":"+String(Number(r.seconds||0)%60).padStart(2,"0"),week:r.week_key,serverRP:Number(r.rp_earned),note:"",createdAt:r.submitted_at?Date.parse(r.submitted_at):Date.now()}));
+ save();
 }
 function msg(id,t,cls="err"){const e=$(id);e.className=cls;e.textContent=t}
 async function hash(s){const data=new TextEncoder().encode(s);const buf=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,"0")).join("")}
 function showApp(){const p=current();if(!p){$("authScreen").classList.remove("hidden");$("appScreen").classList.add("hidden");return}if(p.banned){db.activeId=null;save();msg("authMessage","This local profile is banned.");$("authScreen").classList.remove("hidden");$("appScreen").classList.add("hidden");return}$("authScreen").classList.add("hidden");$("appScreen").classList.remove("hidden");$("activeUser").textContent=p.name;$("weekBadge").textContent=weekKey();$("weekText").textContent=weekKey();renderAll()}
 function setTab(tab){document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden"));$("view-"+tab).classList.remove("hidden");document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));if(tab==="vault")updateVault()}
-function renderAll(){const p=current();if(!p)return;settleWeeklyReward();const week=weekKey();const mine=db.runs.filter(r=>r.userId===p.id);const weekly=mine.filter(r=>r.week===week);const total=weekly.reduce((a,r)=>a+rp(r),0);$("playerRank").textContent=rank(total);$("playerRP").textContent=total.toLocaleString("en-US",{maximumFractionDigits:2})+" RP this week";$("myRuns").innerHTML=mine.length?[...mine].sort((a,b)=>b.createdAt-a.createdAt).map(r=>`<div class="entry"><div class="entrymain"><strong>${esc(r.time)} · ${r.kos} KOs</strong><div class="muted small">${r.points.toLocaleString("en-US")} points · ${r.damage.toLocaleString("en-US")} damage · ${esc(r.week)}</div><div class="muted small">${r.week===week?"Current week":"Previous week"} · ${rp(r).toFixed(2)} RP</div>${r.note?`<div class="muted small">${esc(r.note)}</div>`:""}${r.screenshot?`<img class="shot" alt="Run screenshot" src="${r.screenshot}">`:""}</div><button class="secondary" data-delete="${r.id}">Delete</button></div>`).join(""):'<p class="muted">No runs submitted yet.</p>';document.querySelectorAll("[data-delete]").forEach(b=>b.addEventListener("click",()=>{if(confirm("Delete this run from local history?")){db.runs=db.runs.filter(r=>r.id!==b.dataset.delete);save();renderAll()}}));updateVault()}
+function renderAll(){const p=current();if(!p)return;settleWeeklyReward();const week=weekKey();const mine=db.runs.filter(r=>r.userId===p.id);const weekly=mine.filter(r=>r.week===week);const total=weekly.reduce((a,r)=>a+rp(r),0);$("playerRank").textContent=rank(total);$("playerRP").textContent=total.toLocaleString("en-US",{maximumFractionDigits:2})+" RP this week";$("myRuns").innerHTML=mine.length?[...mine].sort((a,b)=>b.createdAt-a.createdAt).map(r=>`<div class="entry"><div class="entrymain"><strong>${esc(r.time)} · ${r.kos} KOs</strong><div class="muted small">${r.points.toLocaleString("en-US")} points · ${r.damage.toLocaleString("en-US")} damage · ${esc(r.week)}</div><div class="muted small">${r.week===week?"Current week":"Previous week"} · ${rp(r).toFixed(2)} RP</div></div></div>`).join(""):'<p class="muted">No cloud runs submitted yet.</p>';updateVault()}
 function renderAdmin(){if(!adminUnlocked){$("adminArea").classList.add("hidden");return}const p=current();$("adminArea").classList.remove("hidden");$("adminArea").innerHTML='<h2>Profiles</h2>'+db.profiles.map(u=>`<div class="entry"><div class="entrymain"><strong>${esc(u.name)}</strong><div class="muted small">${u.banned?"BANNED":"ACTIVE"}${u.id===p.id?" · YOU":""}</div></div><button class="${u.banned?"secondary":"danger"}" data-ban="${u.id}">${u.banned?"Unban":"Ban"}</button></div>`).join("")+'<label>Change admin code</label><input id="newAdminCode" type="password" minlength="8" placeholder="New admin code, 8+ characters"><button id="saveAdminCode" style="margin-top:8px">Save admin code</button>';document.querySelectorAll("[data-ban]").forEach(b=>b.addEventListener("click",()=>{const u=db.profiles.find(x=>x.id===b.dataset.ban);if(!u)return;if(u.id===p.id&&!u.banned){msg("adminMessage","You cannot ban the currently logged-in owner.","err");return}u.banned=!u.banned;save();renderAll();renderAdmin();msg("adminMessage",u.name+(u.banned?" was banned locally.":" was unbanned locally."),"ok")}));$("saveAdminCode").addEventListener("click",async()=>{const v=$("newAdminCode").value;if(v.length<8){msg("adminMessage","Use at least 8 characters.");return}db.adminHash=await hash(v);save();msg("adminMessage","Admin code saved on this browser.","ok")})}
 $("authPrimary").addEventListener("click",async()=>{
  const email=$("authEmail").value.trim(),pass=$("authPassword").value;
@@ -307,11 +318,18 @@ $("screenshot").addEventListener("change",async()=>{
 });
 $("runForm").addEventListener("submit",async e=>{
  e.preventDefault();const p=current();if(!p||!recognized||!selectedShot){msg("submitMessage","Upload a screenshot and wait for OCR recognition.");return}
- const r={id:crypto.randomUUID(),userId:p.id,...recognized,week:weekKey(),note:"",screenshot:selectedShot,createdAt:Date.now()};
- delete r.confidence;
- try{db.runs.push(r);save()}catch(err){db.runs=db.runs.filter(x=>x.id!==r.id);msg("submitMessage","Could not save this screenshot. Try a smaller image.");return}
- e.currentTarget.reset();recognized=null;selectedShot="";$("ocrPreview").classList.add("hidden");$("saveRunBtn").disabled=true;$("saveRunBtn").textContent="Recognize screenshot first";
- $("ocrStatus").textContent="Run saved. Stats were read from the screenshot.";msg("submitMessage","Run saved. "+rp(r).toFixed(2)+" RP added.","ok");renderAll();
+ const button=$("saveRunBtn");button.disabled=true;button.textContent="Saving to cloud…";
+ try{
+  const {data,error}=await supabase.rpc("submit_pokebonk_run",{p_points:recognized.points,p_kos:recognized.kos,p_damage:recognized.damage,p_seconds:recognized.seconds});
+  if(error)throw error;
+  await refreshCloudRuns();
+  const saved=Array.isArray(data)?data[0]:data;
+  const earned=Number(saved?.rp_earned??0);
+  e.currentTarget.reset();recognized=null;selectedShot="";$("ocrPreview").classList.add("hidden");button.textContent="Recognize screenshot first";
+  $("ocrStatus").textContent="Run saved securely to your account.";msg("submitMessage","Cloud run saved. "+earned.toFixed(2)+" RP added.","ok");renderAll();
+ }catch(err){
+  console.error(err);button.disabled=false;button.textContent="Save recognized run →";msg("submitMessage","Cloud save failed: "+(err.message||"Please try again."),"err");
+ }
 });
 $("exportBtn").addEventListener("click",()=>{const blob=new Blob([JSON.stringify(db)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="pokebonk-ranked-backup.json";a.click();URL.revokeObjectURL(a.href)});
 $("importFile").addEventListener("change",async e=>{const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!Array.isArray(data.profiles)||!Array.isArray(data.runs))throw new Error();if(!confirm("Import will replace the current local save. Continue?"))return;db=data;save();adminUnlocked=false;showApp();alert("Backup imported.")}catch{alert("Invalid backup file.")}e.target.value=""});
