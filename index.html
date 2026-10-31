@@ -54,6 +54,15 @@ input,textarea,select{background:#0b1225;border-color:#35415f}
 .locker-empty{grid-column:1/-1;text-align:center;padding:42px 20px;border:1px dashed #485575;border-radius:16px;color:#aeb8d4}
 @media(max-width:760px){.wrap{padding:14px 12px 45px}.top{padding:15px}.tabs{position:relative;top:0}.tabs button{flex:0 0 auto}.locker-hero{grid-template-columns:1fr!important}.locker-tools input{max-width:none;flex:1}.card{padding:16px}}
 
+.player-showcase{margin:16px 0 20px;padding:18px 20px;border:1px solid var(--showcase-frame,#49416a);border-radius:18px;background:linear-gradient(125deg,var(--showcase-bg,#211b3b),#11182a 70%);box-shadow:0 0 26px var(--showcase-aura,#0000);position:relative;overflow:hidden}
+.showcase-inner{position:relative;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.showcase-avatar{width:54px;height:54px;border-radius:15px;background:linear-gradient(145deg,#a58bff,#38275f);display:grid;place-items:center;font-size:22px;font-weight:1000;border:2px solid var(--showcase-frame,#6c5a9e);flex:0 0 auto}
+.showcase-name{font-size:20px;font-weight:950;line-height:1.2}
+.showcase-nameplate{display:inline-block;margin-top:5px;padding:3px 9px;border-radius:999px;background:var(--showcase-accent,#6d55a8);color:#fff;font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.showcase-title{color:var(--showcase-soft,#d4c7ff);font-size:12px;font-weight:800;margin-top:4px}
+.showcase-badge{display:inline-flex;margin-left:7px;vertical-align:middle;padding:3px 7px;border-radius:7px;background:#f5d16c;color:#342047;font-size:10px;font-weight:950}
+.showcase-slots{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.showcase-slot{font-size:10px;color:#d9d4ee;border:1px solid #ffffff25;background:#ffffff0b;padding:5px 8px;border-radius:8px}
 </style>
 </head>
 <body><main class="wrap">
@@ -61,6 +70,7 @@ input,textarea,select{background:#0b1225;border-color:#35415f}
 <section id="authScreen" class="card" style="max-width:520px;margin:40px auto"><div class="muted small">POKÉBONK ACCOUNT</div><h1 id="authTitle">Create account</h1><p class="muted">Register with your email, a player name and a password. Your account is managed securely by Supabase.</p><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required><div id="registerFields"><label>Player name</label><input id="regName" maxlength="20" autocomplete="username" placeholder="3–20 letters, numbers or _"></div><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"><div class="actions" style="margin-top:15px"><button id="authPrimary">Create account</button><button id="authToggle" class="secondary">I already have an account</button></div><p id="authMessage" class="err"></p><p class="muted small">Runs, Legacy Coins, cosmetic ownership and weekly rewards are synced to your account. Screenshot OCR is client-side and cannot guarantee authenticity.</p></section>
 <div id="appScreen" class="hidden">
 <nav class="tabs" id="tabs"><button data-tab="submit" class="active">Upload screenshot</button><button data-tab="runs">My runs</button><button data-tab="leaderboard">Leaderboard</button><button data-tab="guide">How it works</button><button data-tab="vault">Weekly Cosmetic Vault</button><button data-tab="locker">Locker</button><button data-tab="admin" id="adminTab" class="hidden">Admin Panel</button></nav>
+<section id="playerShowcase" class="player-showcase hidden" aria-live="polite"><div id="playerShowcaseContent"></div></section>
 
 <section id="view-submit" class="view"><div class="card"><div class="muted small">POKÉBONK RANKED V1 · SCREENSHOT-ONLY</div><h1>Upload your run</h1><p class="muted">Choose the PokéBonk end-screen screenshot. The page reads the stats with OCR. You cannot type the numbers manually.</p><form id="runForm"><label>End-screen screenshot (PNG, JPG or WebP, max 2 MB)</label><input id="screenshot" name="screenshot" type="file" accept="image/png,image/jpeg,image/webp" required><div id="ocrStatus" class="notice small" style="margin:12px 0">OCR engine loads when you select an image. Internet is required for the first OCR load.</div><div id="ocrPreview" class="grid hidden"></div><p id="submitMessage" class="err"></p><button id="saveRunBtn" disabled>Recognize screenshot first</button></form><p class="muted small">Protection note: OCR blocks manual stat entry, but it cannot prove a screenshot is genuine. This is a local fun project, not cheat-proof verification.</p></div></section>
 <section id="view-runs" class="view hidden"><div class="card"><h1>My runs</h1><p class="muted">Past runs remain in your local history after the weekly reset.</p><div id="myRuns"></div><div class="actions" style="margin-top:15px"><button class="secondary" id="exportBtn">Export backup</button><label class="filelabel" style="margin:0;cursor:pointer">Import backup<input id="importFile" type="file" accept="application/json,.json" style="display:none"></label></div><p class="muted small">Export backups regularly. Clearing browser data can erase local progress.</p></div></section>
@@ -138,6 +148,31 @@ async function refreshCloudEconomy(){
  const {data:catalogData,error:catalogError}=await supabase.from("cosmetic_catalog").select("cosmetic_id,cost,active");
  if(catalogError)throw catalogError;
  cloudCatalog=new Map((catalogData||[]).map(x=>[x.cosmetic_id,{cost:Number(x.cost),active:!!x.active}]));
+ const {data:loadoutData,error:loadoutError}=await supabase.rpc("get_my_pokebonk_loadout");
+ if(loadoutError)throw loadoutError;
+ lockerLoadout={};(loadoutData||[]).forEach(x=>{lockerLoadout[x.category]=x.cosmetic_id;});
+ renderPlayerShowcase();
+}
+function renderPlayerShowcase(){
+ const wrap=$("playerShowcase"),content=$("playerShowcaseContent"),p=current();
+ if(!wrap||!content||!p)return;
+ const items=Object.entries(lockerLoadout).map(([category,id])=>({category,item:cosmeticCatalog.find(x=>x.id===id)})).filter(x=>x.item);
+ if(!items.length){wrap.classList.add("hidden");return;}
+ const get=c=>items.find(x=>x.category===c)?.item;
+ const nameplate=get("Nameplates"),aura=get("Auras"),frame=get("Frames"),theme=get("Themes"),title=get("Titles"),badge=get("Badges");
+ const palette=["#a58bff","#58d6c5","#ff9d68","#7dc8ff","#ef79b5","#f4d06f"];
+ const ti=theme?((Number(theme.id.split("-").pop())-1)%palette.length):0;
+ const accent=theme?palette[ti]:"#8e78d6";
+ const frameColor=frame?palette[(Number(frame.id.split("-").pop())+2)%palette.length]:"#62558a";
+ const auraColor=aura?palette[(Number(aura.id.split("-").pop()+4)%palette.length]:"#00000000";
+ wrap.style.setProperty("--showcase-accent",accent);
+ wrap.style.setProperty("--showcase-bg",theme?"linear-gradient(125deg,"+accent+"33,#11182a 72%)":"#211b3b");
+ wrap.style.setProperty("--showcase-frame",frameColor);
+ wrap.style.setProperty("--showcase-aura",aura?auraColor+"55":"#0000");
+ wrap.style.setProperty("--showcase-soft",accent);
+ const slots=items.map(x=>"<span class=\"showcase-slot\">"+esc(x.category)+": "+esc(x.item.name)+"</span>").join("");
+ content.innerHTML="<div class=\"showcase-inner\"><div class=\"showcase-avatar\">"+esc((p.name||"PB").slice(0,2).toUpperCase())+"</div><div style=\"min-width:160px;flex:1\"><div class=\"muted small\">YOUR PLAYER IDENTITY</div><div class=\"showcase-name\">"+esc(p.name)+(badge?"<span class=\"showcase-badge\">"+esc(badge.name)+"</span>":"")+"</div>"+(nameplate?"<div class=\"showcase-nameplate\">"+esc(nameplate.name)+"</div>":"<div class=\"muted small\">No nameplate equipped</div>")+(title?"<div class=\"showcase-title\">"+esc(title.name)+"</div>":"")+"</div><div class=\"showcase-slots\">"+slots+"</div></div>";
+ wrap.classList.remove("hidden");
 }
 async function refreshLeaderboard(){
  const status=$("leaderboardStatus"),rows=$("leaderboardRows");if(!status||!rows)return;
@@ -170,6 +205,7 @@ async function renderLocker(){
   const {data:loadoutData,error:loadoutError}=await supabase.rpc("get_my_pokebonk_loadout");
   if(loadoutError)throw loadoutError;
   lockerLoadout={};(loadoutData||[]).forEach(x=>{lockerLoadout[x.category]=x.cosmetic_id;});
+  renderPlayerShowcase();
   const owned=cosmeticCatalog.filter(x=>cloudOwned.includes(x.id));
   const equipped=Object.keys(lockerLoadout).length;
   $("lockerOwnedCount").textContent=owned.length;
