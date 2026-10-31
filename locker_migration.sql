@@ -5,11 +5,7 @@ create table if not exists public.player_cosmetic_loadout (
   category text not null check (category in ('Nameplates','Auras','Frames','Themes','Titles','Badges')),
   cosmetic_id text not null,
   updated_at timestamptz not null default now(),
-  primary key (player_id, category),
-  constraint player_cosmetic_loadout_owned_fk
-    foreign key (player_id, cosmetic_id)
-    references public.player_cosmetics(player_id, cosmetic_id)
-    on delete cascade
+  primary key (player_id, category)
 );
 alter table public.player_cosmetic_loadout enable row level security;
 revoke all on public.player_cosmetic_loadout from anon, authenticated, public;
@@ -48,8 +44,13 @@ begin
   ) then
     raise exception 'You do not own this cosmetic.';
   end if;
-  if split_part(p_cosmetic_id, '-', 1) not in ('nameplate','aura','frame','theme','title','badge') then
-    raise exception 'Invalid cosmetic item.';
+  if (p_category = 'Nameplates' and split_part(p_cosmetic_id, '-', 1) <> 'nameplate')
+     or (p_category = 'Auras' and split_part(p_cosmetic_id, '-', 1) <> 'aura')
+     or (p_category = 'Frames' and split_part(p_cosmetic_id, '-', 1) <> 'frame')
+     or (p_category = 'Themes' and split_part(p_cosmetic_id, '-', 1) <> 'theme')
+     or (p_category = 'Titles' and split_part(p_cosmetic_id, '-', 1) <> 'title')
+     or (p_category = 'Badges' and split_part(p_cosmetic_id, '-', 1) <> 'badge') then
+    raise exception 'Cosmetic does not match the selected category.';
   end if;
   insert into public.player_cosmetic_loadout(player_id, category, cosmetic_id, updated_at)
   values (auth.uid(), p_category, p_cosmetic_id, now())
