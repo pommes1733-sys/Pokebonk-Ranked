@@ -272,7 +272,7 @@ async function updateVault(){
   const claim=Array.isArray(claimData)?claimData[0]:claimData;await refreshCloudEconomy();
   const week=weekKey(),mine=db.runs.filter(r=>r.userId===p.id&&r.week===week),weekly=mine.reduce((sum,r)=>sum+rp(r),0);
   $("legacyBalance").textContent=Number(cloudWallet.legacyCoins||0).toLocaleString("en-US");$("vaultWeeklyRP").textContent=weekly.toLocaleString("en-US",{maximumFractionDigits:2})+" RP";
-  const items=cosmeticItems().filter(it=>cloudCatalog.get(it.id)?.active!==false).map(it=>({...it,cost:cloudCatalog.get(it.id)?.cost??it.cost}));const owned=cloudOwned;
+  const items=cosmeticItems().filter(it=>cloudCatalog.has(it.id)&&cloudCatalog.get(it.id).active).map(it=>({...it,cost:cloudCatalog.get(it.id).cost}));const owned=cloudOwned;
   $("vaultItems").innerHTML='<div class="card" style="grid-column:1/-1"><div class="muted small">THIS WEEK\'S ROTATION · '+esc(week)+'</div><h2>12 rotating cosmetics</h2><p class="muted small">The rotation is shared across all players. Owned items stay on your account permanently.</p></div>'+items.map(it=>{
    const has=owned.includes(it.id);return '<div class="card cosmetic-card"><div class="muted small">'+esc(it.category)+'</div><div style="font-weight:950;font-size:17px;margin:8px 0">'+esc(it.name)+'</div><div class="cosmetic-preview '+esc(it.category.toLowerCase())+'">'+esc(it.name.slice(0,2).toUpperCase())+'</div><div style="color:var(--gold);font-weight:950;margin:10px 0">'+it.cost.toLocaleString("en-US")+' LC</div><button class="'+(has?"secondary":"")+'" data-buy="'+it.id+'" '+(has?"disabled":"")+'>'+(has?"Owned":"Unlock")+'</button></div>';
   }).join("");
