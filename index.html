@@ -174,13 +174,29 @@ function renderPlayerShowcase(){
  content.innerHTML="<div class=\"showcase-inner\"><div class=\"showcase-avatar\">"+esc((p.name||"PB").slice(0,2).toUpperCase())+"</div><div style=\"min-width:160px;flex:1\"><div class=\"muted small\">YOUR PLAYER IDENTITY</div><div class=\"showcase-name\">"+esc(p.name)+(badge?"<span class=\"showcase-badge\">"+esc(badge.name)+"</span>":"")+"</div>"+(nameplate?"<div class=\"showcase-nameplate\">"+esc(nameplate.name)+"</div>":"<div class=\"muted small\">No nameplate equipped</div>")+(title?"<div class=\"showcase-title\">"+esc(title.name)+"</div>":"")+"</div><div class=\"showcase-slots\">"+slots+"</div></div>";
  wrap.classList.remove("hidden");
 }
+function publicCosmeticMarkup(username,loadouts){
+ const items=(loadouts||[]).filter(x=>x.username===username).map(x=>({category:x.category,item:cosmeticCatalog.find(c=>c.id===x.cosmetic_id)})).filter(x=>x.item);
+ const get=c=>items.find(x=>x.category===c)?.item;
+ const np=get("Nameplates"),title=get("Titles"),badge=get("Badges");
+ if(!items.length)return "";
+ return (np?'<span class="showcase-nameplate">'+esc(np.name)+'</span>':"")+
+  (title?'<div class="showcase-title">'+esc(title.name)+'</div>':"")+
+  (badge?'<span class="showcase-badge">'+esc(badge.name)+'</span>':"");
+}
 async function refreshLeaderboard(){
  const status=$("leaderboardStatus"),rows=$("leaderboardRows");if(!status||!rows)return;
  status.textContent="Loading leaderboard…";
- try{const {data,error}=await supabase.rpc("get_global_leaderboard");if(error)throw error;const list=Array.isArray(data)?data:[];
- if(!list.length){rows.innerHTML='<p class="muted">No ranked runs this week yet. Be the first!</p>';status.textContent="Updated just now";return;}
- rows.innerHTML=list.map((u,i)=>'<div class="entry"><div class="num">'+(i+1)+'</div><div class="entrymain"><strong>'+esc(u.username)+'</strong><div class="muted small">'+esc(u.rank_name)+' · '+Number(u.weekly_runs||0)+' runs</div></div><div class="rp">'+Number(u.weekly_rp||0).toLocaleString("en-US",{maximumFractionDigits:2})+' RP</div></div>').join("");
- status.textContent="Top "+list.length+" players · Current week";
+ try{
+  const [{data,error},{data:loadouts,error:loadoutError}]=await Promise.all([
+   supabase.rpc("get_global_leaderboard"),
+   supabase.rpc("get_public_pokebonk_loadouts")
+  ]);
+  if(error)throw error;
+  const list=Array.isArray(data)?data:[];
+  const publicLoadouts=loadoutError?[]:(loadouts||[]);
+  if(!list.length){rows.innerHTML='<p class="muted">No ranked runs this week yet. Be the first!</p>';status.textContent="Updated just now";return;}
+  rows.innerHTML=list.map((u,i)=>'<div class="entry"><div class="num">'+(i+1)+'</div><div class="entrymain"><strong>'+esc(u.username)+'</strong>'+publicCosmeticMarkup(u.username,publicLoadouts)+'<div class="muted small">'+esc(u.rank_name)+' · '+Number(u.weekly_runs||0)+' runs</div></div><div class="rp">'+Number(u.weekly_rp||0).toLocaleString("en-US",{maximumFractionDigits:2})+' RP</div></div>').join("");
+  status.textContent="Top "+list.length+" players · Current week"+(loadoutError?" · Cosmetic badges pending SQL update":"");
  }catch(e){status.textContent="Could not load leaderboard: "+(e.message||"Unknown error");rows.innerHTML="";}
 }
 async function refreshCloudRuns(){
