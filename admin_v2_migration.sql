@@ -143,7 +143,7 @@ begin
   select v_week,'rp_adjustment',to_jsonb(a),v_admin
   from public.player_rp_adjustments a where a.week_key=v_week;
   get diagnostics v_adjustments = row_count;
-  delete from public.player_runs where week_key=v_week;
+  update public.player_runs set week_key=v_week||'-archived-'||id::text where week_key=v_week;
   delete from public.player_rp_adjustments where week_key=v_week;
   insert into public.admin_audit_log(admin_id,target_id,action,details)
   values(v_admin,null,'ranked_week_reset',jsonb_build_object('week_key',v_week,'runs_archived',v_runs,'adjustments_archived',v_adjustments));
