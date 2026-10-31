@@ -164,7 +164,7 @@ function renderPlayerShowcase(){
  const ti=theme?((Number(theme.id.split("-").pop())-1)%palette.length):0;
  const accent=theme?palette[ti]:"#8e78d6";
  const frameColor=frame?palette[(Number(frame.id.split("-").pop())+2)%palette.length]:"#62558a";
- const auraColor=aura?palette[(Number(aura.id.split("-").pop()+4)%palette.length]:"#00000000";
+ const auraColor=aura?palette[(Number(aura.id.split("-").pop())+4)%palette.length]:"#00000000";
  wrap.style.setProperty("--showcase-accent",accent);
  wrap.style.setProperty("--showcase-bg",theme?"linear-gradient(125deg,"+accent+"33,#11182a 72%)":"#211b3b");
  wrap.style.setProperty("--showcase-frame",frameColor);
