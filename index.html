@@ -370,7 +370,7 @@ $("adminLeaderboardRefresh").addEventListener("click",refreshLeaderboard);
 $("adminCosmetics").addEventListener("click",e=>{
  const b=e.target.closest("[data-admin-cosmetic]");if(!b)return;const id=b.dataset.adminCosmetic,active=b.dataset.nextActive==="true";if(!confirm((active?"Activate":"Deactivate")+" "+id+"?"))return;adminAction(async()=>{const {error}=await supabase.rpc("admin_set_cosmetic_active",{p_cosmetic_id:id,p_active:active});if(error)throw error;});
 });
-let recognized=null, selectedShot="";
+let recognized=null, selectedShot="",ocrRunToken=0;
 const cosmeticCatalog=[
 {id:"nameplate-1",category:"Nameplates",name:"Arcade Rookie",cost:120},
 {id:"nameplate-2",category:"Nameplates",name:"Forest Scout",cost:180},
@@ -578,19 +578,23 @@ async function runOCR(file){
  return {points,kos,damage,time,seconds:Number(timeMatch[1])*60+Number(timeMatch[2]),confidence,raw};
 }
 $("screenshot").addEventListener("change",async()=>{
+ const runToken=++ocrRunToken;
  const file=$("screenshot").files[0];recognized=null;selectedShot="";
  $("saveRunBtn").disabled=true;$("saveRunBtn").textContent="Recognize screenshot first";$("ocrPreview").classList.add("hidden");
  if(!file){$("ocrStatus").textContent="Choose an end-screen screenshot.";return}
  if(!["image/png","image/jpeg","image/webp"].includes(file.type)||file.size>2*1024*1024){$("ocrStatus").textContent="Use a PNG/JPG/WebP screenshot under 2 MB.";return}
  $("ocrStatus").textContent="Starting OCR…";
  try{
-  recognized=await runOCR(file);
-  selectedShot=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
+  const parsed=await runOCR(file);
+  if(runToken!==ocrRunToken)return;
+  const shotData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
+  if(runToken!==ocrRunToken)return;
+  recognized=parsed;selectedShot=shotData;
   $("ocrPreview").innerHTML=`<div class="card"><div class="muted small">TIME</div><h2>${esc(recognized.time)}</h2></div><div class="card"><div class="muted small">KOs</div><h2>${recognized.kos}</h2></div><div class="card"><div class="muted small">DAMAGE</div><h2>${recognized.damage.toLocaleString("en-US")}</h2></div><div class="card"><div class="muted small">POINTS</div><h2>${recognized.points.toLocaleString("en-US")}</h2></div><div class="card" style="grid-column:1/-1"><div class="muted small">OCR DEBUG TEXT · COPY THIS TO CHAT</div><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px">${esc(recognized.raw||"(empty)")}</pre></div>`;
   $("ocrPreview").classList.remove("hidden");
   $("ocrStatus").textContent=`Stats recognized. OCR confidence: ${Math.round(recognized.confidence)}%. Check the preview against your screenshot before saving.`;
   $("saveRunBtn").disabled=false;$("saveRunBtn").textContent="Save recognized run →";
- }catch(err){$("ocrStatus").textContent=err.message||"OCR failed. Try a clearer screenshot.";recognized=null}
+ }catch(err){if(runToken===ocrRunToken){$("ocrStatus").textContent=err.message||"OCR failed. Try a clearer screenshot.";recognized=null;selectedShot="";}}
 });
 $("runForm").addEventListener("submit",async e=>{
  e.preventDefault();const form=e.currentTarget;const p=current();if(!p||!recognized||!selectedShot){msg("submitMessage","Upload a screenshot and wait for OCR recognition.");return}
