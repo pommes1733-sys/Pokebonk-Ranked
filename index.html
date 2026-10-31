@@ -282,22 +282,57 @@ function settleWeeklyReward(){
 }
 async function runOCR(file){
  if(!window.Tesseract) throw new Error("OCR library could not load. Connect to the internet and reload the page.");
- const result=await Tesseract.recognize(file,"eng",{logger:m=>{
+ let source=file;
+ try{
+  const bitmap=await createImageBitmap(file);
+  const canvas=document.createElement("canvas");
+  const scale=Math.max(2,Math.min(3,1800/bitmap.width));
+  canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+  for(let i=0;i<pixels.data.length;i+=4){
+   const gray=(pixels.data[i]*0.299+pixels.data[i+1]*0.587+pixels.data[i+2]*0.114);
+   const contrast=Math.max(0,Math.min(255,(gray-128)*1.35+128));
+   pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=contrast;
+  }
+  ctx.putImageData(pixels,0,0);source=canvas;
+ }catch(e){}
+ const result=await Tesseract.recognize(source,"eng",{logger:m=>{
   if(m.status==="recognizing text") $("ocrStatus").textContent="Reading screenshot… "+Math.round((m.progress||0)*100)+"%";
- }});
- const text=result.data.text.toUpperCase().replace(/[|]/g,"1").replace(/[,]/g,"");
+ },tessedit_pageseg_mode:"6"});
+ const raw=result.data.text||"";
+ const text=raw.toUpperCase().replace(/[|]/g,"1").replace(/[,]/g,"");
  const flat=text.replace(/\s+/g," ");
  const timeMatch=flat.match(/\b(\d{1,3})\s*:\s*([0-5]\d)\b/);
  const findStat=(labelPattern)=>{
-   const match=flat.match(new RegExp("(\\d{1,9})\\s*(?:"+labelPattern+")\\b","i"));
-   if(match)return Number(match[1]);
-   const rev=flat.match(new RegExp("\\b(?:"+labelPattern+")\\s*(\\d{1,9})","i"));
-   return rev?Number(rev[1]):null;
+  const label=new RegExp("(?:^|\\b)(?:"+labelPattern+")(?:\\b|$)","i");
+  const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  for(let i=0;i<lines.length;i++){
+   if(label.test(lines[i])){
+    const same=lines[i].match(/\d[\d ]{0,12}/);
+    if(same)return Number(same[0].replace(/\s/g,""));
+    if(lines[i+1]){
+     const next=lines[i+1].match(/\d[\d ]{0,12}/);
+     if(next)return Number(next[0].replace(/\s/g,""));
+    }
+   }
+  }
+  const patterns=[
+   new RegExp("(\\d{1,9})\\s*(?:"+labelPattern+")\\b","i"),
+   new RegExp("\\b(?:"+labelPattern+")\\s*(\\d{1,9})","i")
+  ];
+  for(const re of patterns){const m=flat.match(re);if(m)return Number(m[1]||m[2]);}
+  return null;
  };
- const kos=findStat("KOS|K\\.O\\.S?");
- const damage=findStat("DAMAGE");
- const points=findStat("POINTS?");
- if(!timeMatch||kos===null||damage===null||points===null) throw new Error("Could not confidently read all four stats. Upload a clear, uncropped end-screen screenshot.");
+ const kos=findStat("KOS|K\\.O\\.S?|K0S");
+ const damage=findStat("DAMAGE|D4MAGE");
+ const points=findStat("POINTS?|P0INTS?");
+ if(!timeMatch||kos===null||damage===null||points===null){
+  const excerpt=raw.replace(/\s+/g," ").trim().slice(0,220);
+  throw new Error("OCR konnte nicht alle Werte lesen. Erkannter Text: "+(excerpt||"(kein Text erkannt)")+". Schreib mir diesen Text hier ab.");
+ }
  const time=`${Number(timeMatch[1])}:${timeMatch[2]}`;
  return {points,kos,damage,time,seconds:Number(timeMatch[1])*60+Number(timeMatch[2]),confidence:result.data.confidence||0};
 }
