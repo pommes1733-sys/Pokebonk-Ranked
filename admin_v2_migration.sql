@@ -179,3 +179,19 @@ grant execute on function public.admin_get_players_v2(text,integer) to authentic
 grant execute on function public.get_global_leaderboard_v2() to anon,authenticated;
 grant execute on function public.admin_reset_ranked_week() to authenticated;
 grant execute on function public.admin_get_audit_log(integer) to authenticated;
+
+
+create or replace function public.get_my_weekly_ranked_rp()
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select sum(r.rp_earned) from public.player_runs r
+                   where r.player_id=auth.uid() and r.week_key=to_char(current_date,'IYYY-"W"IW')),0)
+       + coalesce((select sum(a.amount) from public.player_rp_adjustments a
+                   where a.player_id=auth.uid() and a.week_key=to_char(current_date,'IYYY-"W"IW')),0);
+$$;
+revoke all on function public.get_my_weekly_ranked_rp() from public,anon;
+grant execute on function public.get_my_weekly_ranked_rp() to authenticated;
