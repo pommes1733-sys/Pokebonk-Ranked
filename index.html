@@ -334,7 +334,7 @@ async function runOCR(file){
   throw new Error("OCR konnte nicht alle Werte lesen. Erkannter Text: "+(excerpt||"(kein Text erkannt)")+". Schreib mir diesen Text hier ab.");
  }
  const time=`${Number(timeMatch[1])}:${timeMatch[2]}`;
- return {points,kos,damage,time,seconds:Number(timeMatch[1])*60+Number(timeMatch[2]),confidence:result.data.confidence||0};
+ return {points,kos,damage,time,seconds:Number(timeMatch[1])*60+Number(timeMatch[2]),confidence:result.data.confidence||0,raw};
 }
 $("screenshot").addEventListener("change",async()=>{
  const file=$("screenshot").files[0];recognized=null;selectedShot="";
@@ -345,7 +345,7 @@ $("screenshot").addEventListener("change",async()=>{
  try{
   recognized=await runOCR(file);
   selectedShot=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
-  $("ocrPreview").innerHTML=`<div class="card"><div class="muted small">TIME</div><h2>${esc(recognized.time)}</h2></div><div class="card"><div class="muted small">KOs</div><h2>${recognized.kos}</h2></div><div class="card"><div class="muted small">DAMAGE</div><h2>${recognized.damage.toLocaleString("en-US")}</h2></div><div class="card"><div class="muted small">POINTS</div><h2>${recognized.points.toLocaleString("en-US")}</h2></div>`;
+  $("ocrPreview").innerHTML=`<div class="card"><div class="muted small">TIME</div><h2>${esc(recognized.time)}</h2></div><div class="card"><div class="muted small">KOs</div><h2>${recognized.kos}</h2></div><div class="card"><div class="muted small">DAMAGE</div><h2>${recognized.damage.toLocaleString("en-US")}</h2></div><div class="card"><div class="muted small">POINTS</div><h2>${recognized.points.toLocaleString("en-US")}</h2></div><div class="card" style="grid-column:1/-1"><div class="muted small">OCR DEBUG TEXT · COPY THIS TO CHAT</div><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px">${esc(recognized.raw||"(empty)")}</pre></div>`;
   $("ocrPreview").classList.remove("hidden");
   $("ocrStatus").textContent=`Stats recognized. OCR confidence: ${Math.round(recognized.confidence)}%. Check the preview against your screenshot before saving.`;
   $("saveRunBtn").disabled=false;$("saveRunBtn").textContent="Save recognized run →";
